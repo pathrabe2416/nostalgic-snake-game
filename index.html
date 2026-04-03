@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SNAKE — The Classic Arcade Game Reinvented</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@300;400;500;600&family=Barlow+Condensed:wght@700;800&display=swap" rel="stylesheet"/>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:       #070809;
+  --accent-g: #b8ff3c;
+  --accent-c: #3cffd8;
+  --text-1:   #f4f4f4;
+  --text-2:   #7a8090;
+  --display:  'Bebas Neue', sans-serif;
+  --cond:     'Barlow Condensed', sans-serif;
+  --sans:     'Barlow', sans-serif;
+}
+
+/* FIX: was "overflow: hidden" on both html and body — that killed all scrolling.
+   Now html/body scroll naturally. The fixed canvases handle the full-screen bg. */
+html, body {
+  width: 100%;
+  min-height: 100vh;
+  background: var(--bg);
+  font-family: var(--sans);
+  color: var(--text-1);
+}
+
+#grid-canvas {
+  position: fixed; inset: 0;
+  pointer-events: none; z-index: 0;
+}
+
+#demo-canvas {
+  position: fixed; inset: 0;
+  pointer-events: none; z-index: 1;
+}
+
+nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 10;
+  padding: 28px 36px;
+}
+.nav-logo {
+  font-family: var(--display);
+  font-size: 18px;
+  letter-spacing: 0.22em;
+  color: var(--text-1);
+  text-decoration: none;
+}
+
+#hero {
+  position: relative; z-index: 2;
+  width: 100%; height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.hero-title {
+  font-family: var(--display);
+  font-size: clamp(100px, 20vw, 220px);
+  line-height: 0.88;
+  letter-spacing: 0.06em;
+  color: transparent;
+  -webkit-text-stroke: 1.5px rgba(255,255,255,0.82);
+  position: relative;
+  animation: titleIn 1s cubic-bezier(0.16,1,0.3,1) 0.1s both;
+}
+.hero-title .glow-layer {
+  position: absolute; inset: 0;
+  font-family: var(--display);
+  font-size: inherit; line-height: inherit; letter-spacing: inherit;
+  color: var(--accent-g);
+  -webkit-text-stroke: 0;
+  filter: blur(32px);
+  opacity: 0.32;
+  pointer-events: none;
+  animation: glowPulse 3s ease-in-out infinite;
+}
+@keyframes titleIn {
+  from { opacity: 0; transform: translateY(36px) scaleY(0.85); }
+  to   { opacity: 1; transform: translateY(0) scaleY(1); }
+}
+@keyframes glowPulse {
+  0%,100% { opacity: 0.28; }
+  50%     { opacity: 0.5; }
+}
+
+.hero-sub {
+  font-family: var(--cond);
+  font-size: clamp(11px, 1.6vw, 15px);
+  font-weight: 400;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--text-2);
+  margin-top: 16px;
+  margin-bottom: 48px;
+  animation: fadeUp 0.9s cubic-bezier(0.16,1,0.3,1) 0.35s both;
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.cta-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 58px;
+  font-family: var(--cond);
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-1);
+  text-decoration: none;
+  border-radius: 100px;
+  background: rgba(184,255,60,0.06);
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 0 24px rgba(184,255,60,0.2), inset 0 0 40px rgba(184,255,60,0.03);
+  transition: box-shadow 0.25s, background 0.25s, transform 0.18s;
+  animation: fadeUp 0.9s cubic-bezier(0.16,1,0.3,1) 0.5s both;
+}
+.cta-btn::before {
+  content: '';
+  position: absolute; inset: 0;
+  border-radius: 100px;
+  padding: 1.5px;
+  background: linear-gradient(150deg, var(--accent-g) 0%, var(--accent-c) 100%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  animation: borderGlow 2.8s ease-in-out infinite;
+}
+@keyframes borderGlow {
+  0%,100% { opacity: 0.65; }
+  50%     { opacity: 1; }
+}
+.cta-btn:hover {
+  background: rgba(184,255,60,0.11);
+  box-shadow: 0 0 50px rgba(184,255,60,0.38), inset 0 0 60px rgba(184,255,60,0.07);
+  transform: scale(1.03) translateY(-2px);
+}
+.cta-btn:active { transform: scale(0.97); }
+</style>
+</head>
+<body>
+
+<canvas id="grid-canvas"></canvas>
+<canvas id="demo-canvas"></canvas>
+
+<nav>
+  <a href="#" class="nav-logo">Snake</a>
+</nav>
+
+<section id="hero">
+  <h1 class="hero-title">
+    SNAKE
+    <span class="glow-layer" aria-hidden="true">SNAKE</span>
+  </h1>
+  <p class="hero-sub">The Classic Arcade Game Reinvented</p>
+  <a href="game.html" class="cta-btn">▶&nbsp;&nbsp;Play Now</a>
+</section>
+
+<script>
+// ── GRID ────────────────────────────────────────
+const gc   = document.getElementById('grid-canvas');
+const gctx = gc.getContext('2d');
+function drawGrid() {
+  gc.width  = window.innerWidth;
+  gc.height = window.innerHeight;
+  gctx.strokeStyle = 'rgba(255,255,255,0.03)';
+  gctx.lineWidth = 0.5;
+  const cs = 38;
+  for (let x = 0; x <= gc.width;  x += cs) { gctx.beginPath(); gctx.moveTo(x,0); gctx.lineTo(x,gc.height); gctx.stroke(); }
+  for (let y = 0; y <= gc.height; y += cs) { gctx.beginPath(); gctx.moveTo(0,y); gctx.lineTo(gc.width,y);  gctx.stroke(); }
+}
+drawGrid();
+window.addEventListener('resize', drawGrid);
+
+// ── DEMO SNAKE ──────────────────────────────────
+const dc   = document.getElementById('demo-canvas');
+const dctx = dc.getContext('2d');
+const CS   = 28;
+let W, H, COLS, ROWS, dSnake, dDir, dNextDir, dFood, dPhase = 0;
+let dParticles = [];
+
+function resizeDemo() {
+  dc.width  = W = window.innerWidth;
+  dc.height = H = window.innerHeight;
+  COLS = Math.floor(W / CS);
+  ROWS = Math.floor(H / CS);
+  initDemo();
+}
+
+function initDemo() {
+  const cx = Math.floor(COLS * 0.65), cy = Math.floor(ROWS * 0.72);
+  dSnake = [];
+  for (let i = 0; i < 9; i++) dSnake.push({ x: cx - i, y: cy });
+  dDir     = { x: 1, y: 0 };
+  dNextDir = { x: 1, y: 0 };
+  dFood    = { x: Math.floor(COLS * 0.18), y: Math.floor(ROWS * 0.54) };
+}
+
+function placeFood() {
+  dFood = { x: 1 + Math.floor(Math.random() * (COLS - 2)), y: 1 + Math.floor(Math.random() * (ROWS - 2)) };
+}
+
+function spawnParticles(x, y) {
+  for (let i = 0; i < 16; i++) {
+    const a = Math.random() * Math.PI * 2, spd = 1.2 + Math.random() * 4;
+    dParticles.push({ x: x*CS+CS/2, y: y*CS+CS/2, vx: Math.cos(a)*spd, vy: Math.sin(a)*spd,
+      r: 1.5 + Math.random() * 2.5, life: 1, decay: 0.025 + Math.random() * 0.035 });
+  }
+}
+
+function autoSteer() {
+  const h = dSnake[0], dx = dFood.x - h.x, dy = dFood.y - h.y;
+  const opts = [
+    { d:{x:1,y:0},  s: dx  },
+    { d:{x:-1,y:0}, s:-dx  },
+    { d:{x:0,y:1},  s: dy  },
+    { d:{x:0,y:-1}, s:-dy  },
+  ].filter(o => !(o.d.x === -dDir.x && o.d.y === -dDir.y));
+  opts.sort((a,b) => b.s - a.s);
+  for (const o of opts) {
+    const nx = (h.x + o.d.x + COLS) % COLS, ny = (h.y + o.d.y + ROWS) % ROWS;
+    if (!dSnake.slice(0,-1).some(s => s.x===nx && s.y===ny)) { dNextDir = o.d; return; }
+  }
+}
+
+function stepDemo() {
+  autoSteer();
+  dDir = dNextDir;
+  const nx = (dSnake[0].x + dDir.x + COLS) % COLS;
+  const ny = (dSnake[0].y + dDir.y + ROWS) % ROWS;
+  if (dSnake.some(s => s.x===nx && s.y===ny)) { initDemo(); return; }
+  dSnake.unshift({ x:nx, y:ny });
+  if (nx===dFood.x && ny===dFood.y) { spawnParticles(nx,ny); placeFood(); }
+  else dSnake.pop();
+}
+
+function drawDemo() {
+  dPhase += 0.055;
+  dctx.clearRect(0, 0, W, H);
+
+  dParticles = dParticles.filter(p => p.life > 0);
+  for (const p of dParticles) {
+    p.x += p.vx; p.y += p.vy; p.vy += 0.07; p.life -= p.decay;
+    dctx.beginPath(); dctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+    dctx.fillStyle = `rgba(255,60,60,${p.life*0.9})`; dctx.fill();
+  }
+
+  const pulse = 0.88 + Math.sin(dPhase*1.1)*0.12;
+  const fcx = dFood.x*CS+CS/2, fcy = dFood.y*CS+CS/2, fr = (CS/2-2)*pulse;
+  const grd = dctx.createRadialGradient(fcx,fcy,0,fcx,fcy,fr*3.2);
+  grd.addColorStop(0,'rgba(255,60,60,0.22)'); grd.addColorStop(1,'rgba(255,60,60,0)');
+  dctx.beginPath(); dctx.arc(fcx,fcy,fr*3.2,0,Math.PI*2); dctx.fillStyle=grd; dctx.fill();
+  dctx.beginPath(); dctx.arc(fcx,fcy,fr,0,Math.PI*2);
+  dctx.fillStyle='#ff3c3c'; dctx.shadowColor='#ff3c3c'; dctx.shadowBlur=18; dctx.fill(); dctx.shadowBlur=0;
+  dctx.beginPath(); dctx.arc(fcx-fr*0.28,fcy-fr*0.28,fr*0.28,0,Math.PI*2);
+  dctx.fillStyle='rgba(255,200,200,0.7)'; dctx.fill();
+
+  for (let i = dSnake.length-1; i > 0; i--) {
+    const seg = dSnake[i], t = i / Math.max(dSnake.length-1,1);
+    const alpha = Math.max(0.08, 1-t*0.9), pad=2.5, r=Math.max(2,CS*0.22);
+    dctx.beginPath(); dctx.roundRect(seg.x*CS+pad, seg.y*CS+pad, CS-pad*2, CS-pad*2, r);
+    dctx.fillStyle = `rgba(90,180,30,${alpha})`;
+    if (i < 4) { dctx.shadowColor='rgba(130,220,40,0.28)'; dctx.shadowBlur=8; }
+    dctx.fill(); dctx.shadowBlur=0;
+  }
+
+  const h=dSnake[0], pad=1.5, r=Math.max(3,CS*0.28);
+  dctx.beginPath(); dctx.roundRect(h.x*CS+pad, h.y*CS+pad, CS-pad*2, CS-pad*2, r);
+  dctx.fillStyle='#b8ff3c'; dctx.shadowColor='rgba(184,255,60,0.6)'; dctx.shadowBlur=22;
+  dctx.fill(); dctx.shadowBlur=0;
+  dctx.beginPath(); dctx.roundRect(h.x*CS+pad+2, h.y*CS+pad+2, (CS-pad*2)*0.48, (CS-pad*2)*0.26, [r-1,r-1,0,0]);
+  dctx.fillStyle='rgba(255,255,255,0.3)'; dctx.fill();
+
+  requestAnimationFrame(drawDemo);
+}
+
+let lastStep = 0;
+(function loop(ts) {
+  if (ts - lastStep > 115) { stepDemo(); lastStep = ts; }
+  requestAnimationFrame(loop);
+})(0);
+
+resizeDemo();
+window.addEventListener('resize', () => { drawGrid(); resizeDemo(); });
+drawDemo();
+</script>
+</body>
+</html>
