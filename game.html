@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<title>SNAKE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@300;400;500;600&family=Barlow+Condensed:wght@500;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:          #070809;
+  --surface:     #0d0f10;
+  --surface-2:   #131618;
+  --surface-3:   #1a1e21;
+  --border:      rgba(255,255,255,0.05);
+  --border-mid:  rgba(255,255,255,0.09);
+  --border-hi:   rgba(255,255,255,0.15);
+  --accent-g:    #b8ff3c;
+  --accent-c:    #3cffd8;
+  --accent-dim:  rgba(184,255,60,0.14);
+  --accent-glow: rgba(184,255,60,0.07);
+  --text-1:      #f4f4f4;
+  --text-2:      #7a8090;
+  --text-3:      #363c44;
+  --danger:      #ff4d4d;
+  --display:     'Bebas Neue', sans-serif;
+  --cond:        'Barlow Condensed', sans-serif;
+  --sans:        'Barlow', sans-serif;
+  --radius-sm:   6px;
+  --radius-md:   12px;
+  --radius-lg:   18px;
+  --radius-xl:   24px;
+
+  /* Safe area CSS vars for JS to read */
+  --sat: env(safe-area-inset-top, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background: var(--bg);
+  font-family: var(--sans);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+/* ── SCROLL LOCK (portrait active play only) ── */
+body.game-locked {
+  overflow: hidden;
+  height: 100dvh;
+  touch-action: none;
+}
+
+/* ══════════════════════════════════════════════
+   PORTRAIT SHELL — 4-row grid
+══════════════════════════════════════════════ */
+#shell {
+  position: relative;
+  width: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr auto auto;
+  grid-template-columns: 1fr;
+  grid-template-areas: "hud" "board" "dpad" "bar";
+  padding:
+    max(14px, env(safe-area-inset-top))
+    max(14px, env(safe-area-inset-right))
+    max(10px, env(safe-area-inset-bottom))
+    max(14px, env(safe-area-inset-left));
+}
+body.game-locked #shell      { height: 100dvh; overflow: hidden; }
+body:not(.game-locked) #shell { min-height: 100dvh; }
+
+/* ══════════════════════════════════════════════
+   LANDSCAPE SHELL OVERRIDE
+   ─ 2-column: [board] [sidebar]
+   ─ Shell is EXACTLY 100dvh, never scrolls
+   ─ Sidebar width is computed by JS via --ls-sidebar-w
+══════════════════════════════════════════════ */
+#shell.landscape {
+  display: grid;
+  grid-template-rows: 100dvh;
+  grid-template-columns: 1fr var(--ls-sidebar-w, 148px);
+  grid-template-areas: "board side";
+  height: 100dvh;
+  overflow: hidden;
+
+  /* Portrait chrome removed in landscape */
+  padding-top:    0;
+  padding-bottom: 0;
+  padding-left:   max(6px, env(safe-area-inset-left));
+  padding-right:  0;
+}
+
+/* ── HUD (portrait only) ── */
+#hud {
+  grid-area: hud;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 2px 10px;
+  flex-shrink: 0;
+}
+#shell.landscape #hud { display: none; }
+
+#hud-scores { display: flex; align-items: center; gap: clamp(12px,3vw,28px); }
+.hud-block  { display: flex; flex-direction: column; gap: 2px; }
+.hud-label  {
+  font-family: var(--cond); font-size: clamp(8px,1.6vmin,11px);
+  font-weight: 600; letter-spacing: .22em; color: var(--text-3); text-transform: uppercase;
+}
+.hud-value  {
+  font-family: var(--display); font-size: clamp(18px,4vmin,30px);
+  color: var(--text-1); letter-spacing: .04em; line-height: 1; transition: color .15s;
+}
+.hud-value.accented { color: var(--accent-g); }
+.hud-sep    { width:1px; height:clamp(24px,4.5vmin,34px); background:var(--border-mid); flex-shrink:0; }
+#hud-right  { display:flex; align-items:center; gap:clamp(10px,2vw,18px); }
+#hud-logo   { font-family:var(--display); font-size:clamp(16px,4vmin,26px); letter-spacing:.22em; color:var(--text-1); }
+
+/* ── MENU BUTTON ── */
+#menu-btn {
+  position:relative; display:flex; align-items:center; justify-content:center;
+  width:clamp(32px,6vmin,40px); height:clamp(32px,6vmin,40px);
+  border-radius:var(--radius-sm); background:var(--surface-2); border:1px solid var(--border-mid);
+  cursor:pointer; flex-shrink:0; transition:background .15s,border-color .15s,box-shadow .15s;
+}
+#menu-btn::before {
+  content:''; position:absolute; inset:0; border-radius:var(--radius-sm); padding:1px;
+  background:linear-gradient(135deg,var(--accent-g),var(--accent-c));
+  -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
+  -webkit-mask-composite:xor; mask-composite:exclude; opacity:0; transition:opacity .2s; pointer-events:none;
+}
+#menu-btn:hover::before,#menu-btn:active::before{opacity:1;}
+#menu-btn:hover{background:var(--accent-dim);box-shadow:0 0 14px rgba(184,255,60,.18);}
+#menu-btn svg{width:clamp(13px,2.8vmin,17px);height:clamp(13px,2.8vmin,17px);fill:var(--text-2);display:block;transition:fill .15s;}
+#menu-btn:hover svg{fill:var(--accent-g);}
+
+/* ══════════════════════════════════════════════
+   BOARD AREA
+   ─ Portrait: flex center in its grid row
+   ─ Landscape: fills the board grid cell; canvas
+     is sized by JS to fit exactly, no overflow
+══════════════════════════════════════════════ */
+#board-area {
+  grid-area: board;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  min-width: 0;
+  padding: 2px 0;
+}
+#shell.landscape #board-area {
+  /* Fill the full height of the grid cell */
+  height: 100dvh;
+  padding: max(6px, env(safe-area-inset-top)) 4px
+           max(6px, env(safe-area-inset-bottom)) 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;    /* never let a slightly-too-large canvas bleed out */
+}
+
+#board-frame {
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  border: 1px solid var(--border-mid);
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,.025),
+    0 0 60px rgba(184,255,60,.04),
+    0 28px 72px rgba(0,0,0,.7),
+    inset 0 1px 0 rgba(255,255,255,.04);
+  overflow: hidden;
+  position: relative;
+  flex-shrink: 0;
+}
+#canvas-wrap { position:relative; display:block; line-height:0; }
+#gc          { display:block; touch-action:none; }
+
+/* ── OVERLAYS ── */
+.overlay {
+  position:absolute; inset:0; display:none; flex-direction:column;
+  align-items:center; justify-content:center; gap:clamp(8px,1.8vmin,16px);
+  background:rgba(7,8,9,.93); backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px);
+  z-index:10; padding:24px 24px max(24px,env(safe-area-inset-bottom));
+  animation:ovIn .22s cubic-bezier(.16,1,.3,1);
+  overflow-y:auto; -webkit-overflow-scrolling:touch; touch-action:pan-y;
+}
+.overlay.active{display:flex;}
+@keyframes ovIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+
+.ov-eyebrow {
+  font-family:var(--cond); font-size:clamp(9px,1.6vmin,11px); font-weight:600;
+  letter-spacing:.3em; color:var(--text-3); text-transform:uppercase;
+}
+.ov-title {
+  font-family:var(--display); font-size:clamp(30px,8vmin,64px);
+  color:var(--text-1); letter-spacing:.08em; line-height:1; text-align:center;
+}
+.ov-title.danger{color:var(--danger);text-shadow:0 0 28px rgba(255,77,77,.4);}
+.ov-title.gold  {color:var(--accent-g);text-shadow:0 0 28px rgba(184,255,60,.38);}
+.ov-divider{width:40px;height:1px;background:linear-gradient(90deg,transparent,var(--border-hi),transparent);flex-shrink:0;}
+.ov-stat-row{display:flex;gap:clamp(20px,5vmin,40px);align-items:flex-start;}
+.ov-stat{display:flex;flex-direction:column;align-items:center;gap:3px;}
+.ov-stat-label{font-family:var(--cond);font-size:clamp(8px,1.4vmin,10px);font-weight:600;letter-spacing:.22em;color:var(--text-3);text-transform:uppercase;}
+.ov-stat-val{font-family:var(--display);font-size:clamp(22px,5.5vmin,44px);color:var(--text-1);letter-spacing:.06em;line-height:1;}
+.ov-stat-val.gold{color:var(--accent-g);filter:drop-shadow(0 0 10px rgba(184,255,60,.45));}
+.ov-cta{font-family:var(--cond);font-size:clamp(9px,1.7vmin,11px);font-weight:600;color:var(--text-3);letter-spacing:.24em;text-transform:uppercase;animation:blink 1.6s step-end infinite;margin-top:2px;}
+@keyframes blink{50%{opacity:0}}
+
+.ov-btn-group{display:flex;flex-direction:column;gap:8px;width:100%;max-width:200px;margin-top:4px;}
+.ov-btn{
+  font-family:var(--cond); font-size:clamp(10px,1.9vmin,13px); font-weight:700;
+  letter-spacing:.18em; text-transform:uppercase; border:none; border-radius:var(--radius-md);
+  padding:clamp(9px,2.2vmin,14px) 20px; cursor:pointer;
+  transition:background .15s,color .15s,transform .1s,box-shadow .15s;
+  width:100%; text-decoration:none; display:flex; align-items:center; justify-content:center;
+  gap:8px; position:relative; overflow:hidden; touch-action:manipulation;
+}
+.ov-btn:active{transform:scale(.96);}
+.ov-btn-primary{background:var(--accent-g);color:#070809;box-shadow:0 0 24px rgba(184,255,60,.3),0 4px 12px rgba(0,0,0,.4);}
+.ov-btn-primary:hover{background:#c6ff52;box-shadow:0 0 40px rgba(184,255,60,.5),0 4px 16px rgba(0,0,0,.4);}
+.ov-btn-primary::after{content:'';position:absolute;top:0;left:-100%;width:60%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.2),transparent);transform:skewX(-20deg);transition:left .4s;}
+.ov-btn-primary:hover::after{left:160%;}
+.ov-btn-secondary{background:var(--surface-2);color:var(--text-2);border:1px solid var(--border-mid);}
+.ov-btn-secondary:hover{background:var(--surface-3);color:var(--text-1);border-color:var(--border-hi);}
+#ov-menu{z-index:20;}
+
+/* ══════════════════════════════════════════════
+   D-PAD ZONE (portrait touch only)
+══════════════════════════════════════════════ */
+#dpad-zone {
+  grid-area: dpad;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 10px 0 4px;
+  touch-action: none;
+}
+#dpad-zone.visible { display: flex; }
+
+#dpad {
+  display: grid;
+  grid-template-columns: repeat(3, var(--dp));
+  grid-template-rows:    repeat(3, var(--dp));
+  gap: 6px;
+  --dp: 52px;
+}
+
+.dp-btn {
+  border-radius:var(--radius-sm); background:var(--surface-2); border:1px solid var(--border-mid);
+  display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--text-3);
+  transition:background .1s,border-color .1s,color .12s,transform .08s,box-shadow .1s;
+  position:relative; touch-action:manipulation;
+}
+.dp-btn::before{
+  content:''; position:absolute; inset:0; border-radius:var(--radius-sm); padding:1px;
+  background:linear-gradient(135deg,var(--accent-g),var(--accent-c));
+  -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
+  -webkit-mask-composite:xor; mask-composite:exclude; opacity:0; transition:opacity .15s;
+}
+.dp-btn:active::before,.dp-btn.hit::before{opacity:1;}
+.dp-btn:active,.dp-btn.hit{background:var(--accent-dim);color:var(--accent-g);transform:scale(.91);box-shadow:0 0 14px rgba(184,255,60,.2);}
+.dp-btn svg{width:clamp(13px,3vmin,18px);height:clamp(13px,3vmin,18px);fill:currentColor;pointer-events:none;}
+.dp-empty{background:transparent!important;border:none!important;pointer-events:none;}
+
+/* ── STATUS BAR (portrait only) ── */
+#status-bar{
+  grid-area:bar; display:flex; align-items:center; justify-content:space-between;
+  padding:8px 2px 2px; flex-shrink:0;
+}
+#shell.landscape #status-bar{display:none;}
+.sb{font-family:var(--cond);font-size:clamp(8px,1.5vmin,10px);font-weight:600;letter-spacing:.18em;color:var(--text-3);text-transform:uppercase;white-space:nowrap;}
+#status-dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--accent-g);box-shadow:0 0 7px var(--accent-g);vertical-align:middle;margin-right:6px;animation:dotpulse 2.4s ease-in-out infinite;}
+#status-dot.dead{background:var(--danger);box-shadow:0 0 7px var(--danger);animation:none;}
+@keyframes dotpulse{0%,100%{opacity:1}50%{opacity:.18}}
+
+/* ══════════════════════════════════════════════
+   LANDSCAPE SIDEBAR — KEY FIX AREA
+   ─ Strict flex column, exactly 100dvh tall
+   ─ Three sections: [top: logo+menu] [mid: scores] [bot: dpad]
+   ─ justify-content: space-between fills all gaps evenly
+   ─ Each section is flex-shrink:0 so nothing squishes
+   ─ overflow:hidden prevents any bleed
+══════════════════════════════════════════════ */
+#ls-sidebar {
+  grid-area: side;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+
+  /* Exactly fills one grid row = 100dvh */
+  height: 100dvh;
+  overflow: hidden;
+
+  /* Safe-area insets on the right column */
+  padding-top:    max(10px, env(safe-area-inset-top));
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  padding-left:   6px;
+  padding-right:  max(10px, env(safe-area-inset-right));
+
+  width: var(--ls-sidebar-w, 148px);
+  min-width: 120px;
+  background: rgba(7,8,9,.4);
+  border-left: 1px solid var(--border);
+}
+#shell.landscape #ls-sidebar  { display: flex; }
+#shell.landscape #dpad-zone   { display: none !important; }
+
+/* ── Sidebar top: logo + menu btn ── */
+#ls-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  flex-shrink: 0;
+}
+#ls-logo {
+  font-family: var(--display);
+  font-size: clamp(13px, 2.8vmin, 20px);
+  letter-spacing: .22em;
+  color: var(--text-1);
+  text-align: center;
+}
+#ls-menu-btn-slot { display: flex; align-items: center; justify-content: center; width: 100%; }
+
+/* ── Sidebar mid: scores ── */
+#ls-scores {
+  display: none;          /* shown only in landscape via #shell.landscape rule */
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  flex-shrink: 0;
+}
+#shell.landscape #ls-scores { display: flex; }
+
+.ls-score-block { display:flex; flex-direction:column; align-items:center; gap:3px; width:100%; }
+.ls-score-label { font-family:var(--cond); font-size:clamp(7px,1.3vmin,9px); font-weight:600; letter-spacing:.22em; color:var(--text-3); text-transform:uppercase; }
+.ls-score-value { font-family:var(--display); font-size:clamp(16px,3.5vmin,26px); color:var(--text-1); letter-spacing:.06em; line-height:1; }
+.ls-score-value.accent { color: var(--accent-g); }
+.ls-divider { width:80%; height:1px; background:var(--border); margin: 2px 0; }
+
+/* ── Sidebar bottom: d-pad ── */
+#ls-dpad-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  flex-shrink: 0;
+  width: 100%;
+  touch-action: none;
+  /* 
+    The dpad (#dpad grid) lives here in landscape.
+    Its --dp is set by JS so it always fits the sidebar width.
+  */
+}
+
+/* ── Score pop animation ── */
+@keyframes valuePop{0%{transform:scale(1)}40%{transform:scale(1.4);color:var(--accent-g);filter:drop-shadow(0 0 6px var(--accent-g))}100%{transform:scale(1)}}
+.val-pop{animation:valuePop .3s cubic-bezier(.34,1.56,.64,1) forwards;}
+
+/* ── New-best badge ── */
+#best-badge {
+  position:absolute; top:10px; left:50%; transform:translateX(-50%) translateY(-30px);
+  background:var(--accent-g); color:#070809; font-family:var(--cond); font-size:9px; font-weight:700;
+  letter-spacing:.18em; text-transform:uppercase; padding:4px 12px; border-radius:20px;
+  opacity:0; pointer-events:none; z-index:20; white-space:nowrap;
+  box-shadow:0 0 16px rgba(184,255,60,.45);
+}
+#best-badge.show{animation:badgePop 1.9s cubic-bezier(.34,1.56,.64,1) forwards;}
+@keyframes badgePop{0%{opacity:0;transform:translateX(-50%) translateY(-16px)}14%{opacity:1;transform:translateX(-50%) translateY(4px)}72%{opacity:1;transform:translateX(-50%) translateY(4px)}100%{opacity:0;transform:translateX(-50%) translateY(-8px)}}
+
+/* ── Board decorations ── */
+#board-frame::after {
+  content:''; position:absolute; inset:0;
+  background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,.04) 3px,rgba(0,0,0,.04) 4px);
+  pointer-events:none; z-index:5; border-radius:inherit;
+}
+#board-frame::before {
+  content:''; position:absolute; inset:0; border-radius:var(--radius-xl);
+  background:radial-gradient(ellipse at 50% 0%,rgba(184,255,60,.06) 0%,transparent 65%);
+  pointer-events:none; z-index:1;
+}
+</style>
+</head>
+<body>
+<div id="shell">
+
+  <!-- HUD (portrait only) -->
+  <div id="hud">
+    <div id="hud-scores">
+      <div class="hud-block">
+        <span class="hud-label">Best</span>
+        <span class="hud-value" id="bv">00</span>
+      </div>
+      <div class="hud-sep"></div>
+      <div class="hud-block">
+        <span class="hud-label">Score</span>
+        <span class="hud-value" id="sv">00</span>
+      </div>
+    </div>
+    <div id="hud-right">
+      <div id="hud-logo">Snake</div>
+      <button id="menu-btn" aria-label="Menu" title="Menu">
+        <svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+          <rect x="2" y="4.5"  width="16" height="1.6" rx="0.8"/>
+          <rect x="2" y="9.2"  width="16" height="1.6" rx="0.8"/>
+          <rect x="2" y="13.9" width="16" height="1.6" rx="0.8"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- BOARD -->
+  <div id="board-area">
+    <div id="board-frame">
+      <div id="canvas-wrap">
+        <canvas id="gc"></canvas>
+        <div id="best-badge">✦ new best</div>
+
+        <!-- GAME OVER OVERLAY -->
+        <div class="overlay" id="ov-dead">
+          <span class="ov-eyebrow" id="ov-eyebrow">game over</span>
+          <div class="ov-title" id="ov-dead-title">Nice Try</div>
+          <div class="ov-divider"></div>
+          <div class="ov-stat-row">
+            <div class="ov-stat">
+              <span class="ov-stat-label">Score</span>
+              <span class="ov-stat-val" id="ov-score-val">00</span>
+            </div>
+            <div class="ov-stat" id="ov-best-block" style="display:none">
+              <span class="ov-stat-label">Best</span>
+              <span class="ov-stat-val gold" id="ov-best-val">00</span>
+            </div>
+          </div>
+          <div class="ov-divider"></div>
+          <div class="ov-btn-group">
+            <button class="ov-btn ov-btn-primary" id="btn-play-again">▶ &nbsp;Play Again</button>
+            <a href="index.html" class="ov-btn ov-btn-secondary">⌂ &nbsp;Main Menu</a>
+          </div>
+        </div>
+
+        <!-- IN-GAME MENU OVERLAY -->
+        <div class="overlay" id="ov-menu">
+          <span class="ov-eyebrow">paused</span>
+          <div class="ov-title">Menu</div>
+          <div class="ov-divider"></div>
+          <div class="ov-btn-group">
+            <button class="ov-btn ov-btn-primary" id="btn-resume">▶ &nbsp;Resume</button>
+            <button class="ov-btn ov-btn-secondary" id="btn-restart">↺ &nbsp;Restart</button>
+            <a href="index.html" class="ov-btn ov-btn-secondary">⌂ &nbsp;Main Menu</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- D-PAD ZONE (portrait touch only) -->
+  <div id="dpad-zone">
+    <div>
+      <div id="dpad">
+        <div class="dp-empty"></div>
+        <div class="dp-btn" id="dp-up">
+          <svg viewBox="0 0 24 24"><path d="M12 5l8 11H4z"/></svg>
+        </div>
+        <div class="dp-empty"></div>
+        <div class="dp-btn" id="dp-left">
+          <svg viewBox="0 0 24 24"><path d="M5 12l11-8v16z"/></svg>
+        </div>
+        <div class="dp-empty"></div>
+        <div class="dp-btn" id="dp-right">
+          <svg viewBox="0 0 24 24"><path d="M19 12L8 4v16z"/></svg>
+        </div>
+        <div class="dp-empty"></div>
+        <div class="dp-btn" id="dp-down">
+          <svg viewBox="0 0 24 24"><path d="M12 19L4 8h16z"/></svg>
+        </div>
+        <div class="dp-empty"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STATUS BAR (portrait only) -->
+  <div id="status-bar">
+    <span class="sb"><span id="status-dot"></span><span id="stxt">live</span></span>
+    <span class="sb">snake · arcade</span>
+    <span class="sb" id="ltag">length 2</span>
+  </div>
+
+  <!-- LANDSCAPE SIDEBAR -->
+  <div id="ls-sidebar">
+    <!-- TOP: logo + menu -->
+    <div id="ls-controls">
+      <div id="ls-logo">Snake</div>
+      <div id="ls-menu-btn-slot"></div>
+    </div>
+    <!-- MID: scores -->
+    <div id="ls-scores">
+      <div class="ls-score-block">
+        <span class="ls-score-label">Score</span>
+        <span class="ls-score-value" id="ls-sv">00</span>
+      </div>
+      <div class="ls-divider"></div>
+      <div class="ls-score-block">
+        <span class="ls-score-label">Best</span>
+        <span class="ls-score-value accent" id="ls-bv">00</span>
+      </div>
+    </div>
+    <!-- BOTTOM: d-pad lives here in landscape (JS moves it) -->
+    <div id="ls-dpad-bottom"></div>
+  </div>
+
+</div><!-- /shell -->
+
+<script>
+/* ══════════════════════════════════════════════════
+   SNAKE — landscape-fixed build
+   ══════════════════════════════════════════════════ */
+
+// ── DOM ──────────────────────────────────────────────────────────
+const canvas     = document.getElementById('gc');
+const ctx        = canvas.getContext('2d');
+const svEl       = document.getElementById('sv');
+const bvEl       = document.getElementById('bv');
+const ovDead     = document.getElementById('ov-dead');
+const ovMenu     = document.getElementById('ov-menu');
+const ovScore    = document.getElementById('ov-score-val');
+const ovBestVal  = document.getElementById('ov-best-val');
+const ovBestBlk  = document.getElementById('ov-best-block');
+const ovTitle    = document.getElementById('ov-dead-title');
+const ovEye      = document.getElementById('ov-eyebrow');
+const shellEl    = document.getElementById('shell');
+const dpadZone   = document.getElementById('dpad-zone');
+const dpadGrid   = document.getElementById('dpad');
+const statusDot  = document.getElementById('status-dot');
+const stxt       = document.getElementById('stxt');
+const ltag       = document.getElementById('ltag');
+const bestBadge  = document.getElementById('best-badge');
+const lsSv       = document.getElementById('ls-sv');
+const lsBv       = document.getElementById('ls-bv');
+const menuBtn    = document.getElementById('menu-btn');
+const lsSidebar  = document.getElementById('ls-sidebar');
+const lsDpadBot  = document.getElementById('ls-dpad-bottom');
+const lsMenuSlot = document.getElementById('ls-menu-btn-slot');
+
+// ── Config ───────────────────────────────────────────────────────
+const BASE_MS    = 150;
+const MIN_MS     = 60;
+const SPEED_STEP = 4;
+const WRAP       = true;
+const CELL_MIN   = 10;
+const CELL_MAX   = 26;
+
+// ── Palette ──────────────────────────────────────────────────────
+const COLOR = {
+  bg:        '#070809',
+  grid:      'rgba(255,255,255,0.022)',
+  headFill:  '#b8ff3c',
+  headShine: 'rgba(255,255,255,0.26)',
+  bodyHi:    '#7ec820',
+  bodyLo:    '#3a5f10',
+  food:      '#ff4d4d',
+  foodGlow:  'rgba(255,77,77,0.2)',
+  foodShine: 'rgba(255,200,200,0.65)',
+};
+
+// ── State ────────────────────────────────────────────────────────
+let CS, COLS, ROWS, W, H;
+let snake, dir, nextDir, food;
+let score = 0, best = 0;
+let gameState = 'playing';
+let loopId = null;
+let foodPhase = 0;
+let domIsLandscape = false;
+
+// ── Util ─────────────────────────────────────────────────────────
+const clamp       = (lo, v, hi) => Math.max(lo, Math.min(hi, v));
+const isTouch     = () => window.matchMedia('(pointer:coarse)').matches || 'ontouchstart' in window;
+const isLandscape = () => window.innerWidth > window.innerHeight;
+const pad2        = n => String(n).padStart(2, '0');
+
+// ── Scroll lock ──────────────────────────────────────────────────
+let openOverlayCount = 0;
+
+function lockScroll() {
+  if (openOverlayCount === 0 && gameState === 'playing')
+    document.body.classList.add('game-locked');
+}
+function unlockScroll() {
+  document.body.classList.remove('game-locked');
+}
+function overlayOpened() { openOverlayCount++; unlockScroll(); }
+function overlayClosed() {
+  openOverlayCount = Math.max(0, openOverlayCount - 1);
+  if (openOverlayCount === 0 && gameState === 'playing') lockScroll();
+}
+
+canvas.addEventListener('touchmove', e => {
+  if (gameState === 'playing') e.preventDefault();
+}, { passive: false });
+
+// ── Landscape DOM reparenting ────────────────────────────────────
+function syncLandscapeDOM(ls) {
+  if (ls === domIsLandscape) return;
+  domIsLandscape = ls;
+
+  if (ls) {
+    lsDpadBot.appendChild(dpadGrid);
+    const clone = menuBtn.cloneNode(true);
+    clone.id = 'menu-btn-ls-clone';
+    clone.addEventListener('click', e => { e.stopPropagation(); openMenu(); });
+    lsMenuSlot.innerHTML = '';
+    lsMenuSlot.appendChild(clone);
+  } else {
+    const dpadZoneInner = dpadZone.querySelector('div');
+    dpadZoneInner.appendChild(dpadGrid);
+    lsMenuSlot.innerHTML = '';
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  LAYOUT — rewritten to fix the landscape cut-off bug
+//
+//  ROOT CAUSE of the original bug:
+//  1. Sidebar width was calculated AFTER dpSize, but dpSize was
+//     then re-derived from sidebarW — causing circular rounding
+//     errors that made the sidebar too wide and pushed the board
+//     column out of view.
+//  2. boardH in landscape used vh minus hard-coded safe-area CSS
+//     vars that often read as 0 on Android Chrome, resulting in
+//     the canvas being taller than the viewport.
+//  3. No explicit max-height was placed on the board-area, so
+//     the frame could overflow.
+//
+//  FIX STRATEGY:
+//  A. Compute sidebar width FIRST from a fraction of innerWidth.
+//     Keep it narrow enough (≤22vw, max 150px) so the board
+//     always gets at least 78% of the viewport width.
+//  B. Compute dpSize SECOND from the already-known sidebar width,
+//     so there's no circular dependency.
+//  C. boardH = innerHeight − safeTop − safeBottom − tiny margin.
+//     Read safe insets via getComputedStyle on <html> which is
+//     the only reliable cross-browser way on Android.
+//  D. Clamp boardH and boardW so they can never exceed the viewport.
+// ══════════════════════════════════════════════════════════════════
+function getSafeInsets() {
+  // Reading from CSS custom properties on :root is the most
+  // reliable way across Android Chrome, Samsung Internet & iOS Safari.
+  const s = getComputedStyle(document.documentElement);
+  const parse = v => parseFloat(v) || 0;
+  return {
+    top:    parse(s.getPropertyValue('--sat')),
+    right:  parse(s.getPropertyValue('--sar')),
+    bottom: parse(s.getPropertyValue('--sab')),
+    left:   parse(s.getPropertyValue('--sal')),
+  };
+}
+
+function layout() {
+  const vw    = window.innerWidth;
+  const vh    = window.innerHeight;   // real visual-viewport height
+  const ls    = isLandscape();
+  const touch = isTouch();
+  const safe  = getSafeInsets();
+
+  shellEl.classList.toggle('landscape', ls && touch);
+  syncLandscapeDOM(ls && touch);
+
+  // Show/hide portrait dpad
+  if (!ls || !touch) {
+    dpadZone.classList.toggle('visible', touch);
+  } else {
+    dpadZone.classList.remove('visible');
+  }
+
+  // ── A. Sidebar width (landscape only) ───────────────────────
+  let sidebarW = 0;
+  if (ls && touch) {
+    // Target: narrow enough that board gets ≥78% of screen width.
+    // At 360px wide phone (landscape ≈ 640–720px), this gives ~145px.
+    sidebarW = clamp(120, Math.floor(vw * 0.20), 150);
+    shellEl.style.setProperty('--ls-sidebar-w', sidebarW + 'px');
+    lsSidebar.style.width = sidebarW + 'px';
+  }
+
+  // ── B. D-pad size derived from sidebar (no circular dep) ────
+  let dpSize = 0;
+  if (touch) {
+    if (ls) {
+      // Sidebar inner width = sidebarW − left/right padding (6+10=16px)
+      const innerW = sidebarW - 16;
+      // 3 buttons + 2×6px gaps = 3*dp + 12
+      dpSize = Math.floor((innerW - 12) / 3);
+      dpSize = clamp(28, dpSize, 48);
+
+      // Also ensure dpad height (3 rows + 2 gaps) fits in bottom portion.
+      // Bottom portion budget: vh * 0.45 (leave 55% for logo+scores)
+      const maxFromH = Math.floor((vh * 0.45 - 12) / 3);
+      dpSize = Math.min(dpSize, maxFromH);
+      dpSize = Math.max(dpSize, 26); // absolute floor
+    } else {
+      // Portrait: dpad should use ~18% of vmin each button
+      dpSize = clamp(42, Math.floor(Math.min(vw * 0.44, vh * 0.18)), 64);
+    }
+  }
+  dpadGrid.style.setProperty('--dp', dpSize + 'px');
+
+  // ── C. Board dimensions ──────────────────────────────────────
+  let boardW, boardH;
+
+  if (ls && touch) {
+    // Left shell padding + small gap between board and sidebar
+    const leftPad  = Math.max(6, safe.left);
+    const rightGap = 4;
+    boardW = vw - sidebarW - leftPad - rightGap;
+
+    // Full visual height minus safe areas and tiny vertical margin
+    const vPad = Math.max(6, safe.top) + Math.max(6, safe.bottom) + 12;
+    boardH = vh - vPad;
+
+    // Hard clamp: never exceed 98% of the viewport dimensions
+    boardW = Math.min(boardW, Math.floor(vw * 0.98));
+    boardH = Math.min(boardH, Math.floor(vh * 0.96));
+
+  } else if (touch) {
+    // Portrait touch
+    const hudEl  = document.getElementById('hud');
+    const barEl  = document.getElementById('status-bar');
+    const hudH   = hudEl ? hudEl.offsetHeight : clamp(30, vh * 0.085, 48);
+    const barH   = barEl ? barEl.offsetHeight : clamp(18, vh * 0.04,  28);
+    const dpadH  = dpSize * 3 + 12 + clamp(10, vh * 0.018, 22) + 14;
+    boardW = vw - 28;
+    boardH = vh - hudH - barH - dpadH - 22;
+  } else {
+    // Desktop
+    const hudH = clamp(32, vh * 0.085, 52);
+    const barH = clamp(18, vh * 0.04,  28);
+    boardW = vw - 28;
+    boardH = vh - hudH - barH - 22;
+  }
+
+  boardW = Math.max(80, Math.floor(boardW));
+  boardH = Math.max(80, Math.floor(boardH));
+
+  // ── D. Grid cell size & count ────────────────────────────────
+  const aspect = boardW / boardH;
+  let tCols, tRows;
+
+  if (ls) {
+    tRows = clamp(10, Math.round(boardH / 20), 22);
+    tCols = clamp(12, Math.round(tRows * aspect), 34);
+  } else {
+    tCols = clamp(14, Math.round(boardW / 20), 26);
+    tRows = clamp(18, Math.round(tCols / aspect), 36);
+  }
+
+  const csW = Math.floor(boardW / tCols);
+  const csH = Math.floor(boardH / tRows);
+  CS   = clamp(CELL_MIN, Math.min(csW, csH), CELL_MAX);
+  COLS = Math.floor(boardW / CS);
+  ROWS = Math.floor(boardH / CS);
+  W    = COLS * CS;
+  H    = ROWS * CS;
+
+  canvas.width  = W;  canvas.height = H;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+
+  // ── E. Enforce max-height on board-area so it never overflows
+  const boardAreaEl = document.getElementById('board-area');
+  if (ls && touch) {
+    boardAreaEl.style.maxHeight = vh + 'px';
+    boardAreaEl.style.maxWidth  = (vw - sidebarW - 10) + 'px';
+  } else {
+    boardAreaEl.style.maxHeight = '';
+    boardAreaEl.style.maxWidth  = '';
+  }
+}
+
+// ══════════════════════════════════════════════════
+//  GAME LOGIC
+// ══════════════════════════════════════════════════
+function placeFood() {
+  let p;
+  do {
+    p = { x: Math.floor(Math.random() * COLS), y: Math.floor(Math.random() * ROWS) };
+  } while (snake.some(s => s.x === p.x && s.y === p.y));
+  food = p; foodPhase = 0;
+}
+
+function initGame() {
+  layout();
+  const cx = Math.floor(COLS / 2), cy = Math.floor(ROWS / 2);
+  snake    = [{ x: cx, y: cy }, { x: cx - 1, y: cy }];
+  dir      = { x: 1, y: 0 };
+  nextDir  = { x: 1, y: 0 };
+  score    = 0;
+  gameState = 'playing';
+  openOverlayCount = 0;
+  lockScroll();
+  svEl.textContent = pad2(score);
+  lsSv.textContent = pad2(score);
+  ltag.textContent = 'length 2';
+  closeAllOverlays();
+  setAlive();
+  placeFood();
+  clearInterval(loopId);
+  loopId = setInterval(tick, calcSpeed(0));
+  draw();
+}
+
+function calcSpeed(sc) { return clamp(MIN_MS, BASE_MS - sc * SPEED_STEP, BASE_MS); }
+function setAlive() { statusDot.className = ''; stxt.textContent = 'live'; }
+function setDead()  { statusDot.className = 'dead'; stxt.textContent = 'dead'; }
+
+function closeAllOverlays() {
+  if (ovDead.classList.contains('active')) { ovDead.classList.remove('active'); overlayClosed(); }
+  if (ovMenu.classList.contains('active')) { ovMenu.classList.remove('active'); overlayClosed(); }
+  openOverlayCount = 0;
+}
+function showOverlay(el) { el.classList.add('active'); overlayOpened(); }
+function hideOverlay(el) {
+  if (el.classList.contains('active')) { el.classList.remove('active'); overlayClosed(); }
+}
+
+function tick() {
+  if (gameState !== 'playing') return;
+  dir = nextDir;
+  foodPhase += 0.12;
+
+  let nx = snake[0].x + dir.x;
+  let ny = snake[0].y + dir.y;
+
+  if (WRAP) {
+    nx = (nx + COLS) % COLS;
+    ny = (ny + ROWS) % ROWS;
+  } else if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) {
+    gameOver(); return;
+  }
+
+  const head = { x: nx, y: ny };
+  if (snake.some(s => s.x === head.x && s.y === head.y)) { gameOver(); return; }
+  snake.unshift(head);
+
+  if (head.x === food.x && head.y === food.y) {
+    score++;
+    svEl.textContent = pad2(score);
+    lsSv.textContent = pad2(score);
+    pop(svEl);
+    if (score > best) {
+      best = score;
+      bvEl.textContent = pad2(best);
+      lsBv.textContent = pad2(best);
+      pop(bvEl);
+      showBestBadge();
+    }
+    ltag.textContent = 'length ' + snake.length;
+    placeFood();
+    clearInterval(loopId);
+    loopId = setInterval(tick, calcSpeed(score));
+  } else {
+    snake.pop();
+  }
+  draw();
+}
+
+function pop(el) {
+  el.classList.remove('val-pop');
+  void el.offsetWidth;
+  el.classList.add('val-pop');
+}
+function showBestBadge() {
+  bestBadge.classList.remove('show');
+  void bestBadge.offsetWidth;
+  bestBadge.classList.add('show');
+}
+
+function gameOver() {
+  clearInterval(loopId);
+  gameState = 'dead';
+  setDead();
+  unlockScroll();
+
+  ovEye.textContent   = score >= 10 ? 'well played' : 'game over';
+  ovTitle.textContent = score >= 20 ? 'Impressive' : score >= 10 ? 'Well Done' : score >= 5 ? 'Not Bad' : 'Nice Try';
+  ovTitle.className   = 'ov-title' + (score === 0 ? ' danger' : score >= 10 ? ' gold' : '');
+  ovScore.textContent = pad2(score);
+
+  if (score > 0) {
+    ovBestVal.textContent = pad2(best);
+    ovBestBlk.style.display = 'flex';
+  } else {
+    ovBestBlk.style.display = 'none';
+  }
+
+  let f = 0;
+  const fl = setInterval(() => {
+    ctx.fillStyle = f % 2 === 0 ? 'rgba(255,60,60,0.08)' : 'transparent';
+    ctx.fillRect(0, 0, W, H);
+    if (++f > 5) clearInterval(fl);
+  }, 65);
+
+  setTimeout(() => showOverlay(ovDead), 340);
+}
+
+// ══════════════════════════════════════════════════
+//  DRAWING
+// ══════════════════════════════════════════════════
+function draw() {
+  ctx.fillStyle = COLOR.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.strokeStyle = COLOR.grid;
+  ctx.lineWidth = 1;
+  for (let c = 1; c < COLS; c++) {
+    ctx.beginPath(); ctx.moveTo(c*CS, 0); ctx.lineTo(c*CS, H); ctx.stroke();
+  }
+  for (let r = 1; r < ROWS; r++) {
+    ctx.beginPath(); ctx.moveTo(0, r*CS); ctx.lineTo(W, r*CS); ctx.stroke();
+  }
+
+  drawFood();
+  for (let i = snake.length - 1; i > 0; i--) drawBody(snake[i], i);
+  drawHead(snake[0]);
+}
+
+function drawFood() {
+  const cx = food.x * CS + CS / 2;
+  const cy = food.y * CS + CS / 2;
+  const pulse = 0.88 + Math.sin(foodPhase) * 0.12;
+  const r = Math.max(3, (CS / 2 - 2) * pulse);
+
+  const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 3);
+  glow.addColorStop(0, 'rgba(255,77,77,0.18)');
+  glow.addColorStop(1, 'rgba(255,77,77,0)');
+  ctx.beginPath(); ctx.arc(cx, cy, r * 3, 0, Math.PI * 2);
+  ctx.fillStyle = glow; ctx.fill();
+
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = COLOR.food;
+  ctx.shadowColor = COLOR.food;
+  ctx.shadowBlur = clamp(5, CS * 0.5, 16);
+  ctx.fill(); ctx.shadowBlur = 0;
+
+  ctx.beginPath(); ctx.arc(cx - r * 0.28, cy - r * 0.28, r * 0.27, 0, Math.PI * 2);
+  ctx.fillStyle = COLOR.foodShine; ctx.fill();
+}
+
+function drawBody(seg, idx) {
+  const x = seg.x * CS, y = seg.y * CS;
+  const pad = 2.2;
+  const t = idx / Math.max(snake.length - 1, 1);
+  const alpha = Math.max(0.13, 1 - t * 0.87);
+  const r = Math.max(2, CS * 0.22);
+  const col = `rgba(${lerp(126,58,t)},${lerp(200,95,t)},${lerp(32,16,t)},${(alpha * 0.92).toFixed(2)})`;
+  ctx.beginPath();
+  ctx.roundRect(x + pad, y + pad, CS - pad * 2, CS - pad * 2, r);
+  ctx.fillStyle = col;
+  if (idx < 3) { ctx.shadowColor = 'rgba(184,255,60,0.22)'; ctx.shadowBlur = 7; }
+  ctx.fill(); ctx.shadowBlur = 0;
+}
+
+function lerp(a, b, t) { return Math.round(a + (b - a) * t); }
+
+function drawHead(seg) {
+  const x = seg.x * CS, y = seg.y * CS;
+  const pad = 1.5;
+  const sw = CS - pad * 2, sh = CS - pad * 2;
+  const r = Math.max(3, CS * 0.28);
+
+  ctx.beginPath(); ctx.roundRect(x + pad, y + pad, sw, sh, r);
+  ctx.fillStyle = COLOR.headFill;
+  ctx.shadowColor = 'rgba(184,255,60,0.55)';
+  ctx.shadowBlur = clamp(7, CS * 0.65, 20);
+  ctx.fill(); ctx.shadowBlur = 0;
+
+  ctx.beginPath();
+  ctx.roundRect(x + pad + 2, y + pad + 2, sw * 0.52, sh * 0.27, [r - 1, r - 1, 0, 0]);
+  ctx.fillStyle = COLOR.headShine; ctx.fill();
+
+  drawEyes(x, y);
+}
+
+function drawEyes(x, y) {
+  const d = dir, c = CS;
+  const eo = Math.max(3, c * 0.22);
+  const ei = Math.max(2, c * 0.29);
+  let e1x, e1y, e2x, e2y;
+
+  if      (d.x ===  1) { e1x=x+c-eo;   e1y=y+ei;     e2x=x+c-eo;   e2y=y+c-ei-1; }
+  else if (d.x === -1) { e1x=x+eo-1;   e1y=y+ei;     e2x=x+eo-1;   e2y=y+c-ei-1; }
+  else if (d.y === -1) { e1x=x+ei;     e1y=y+eo-1;   e2x=x+c-ei-1; e2y=y+eo-1;   }
+  else                 { e1x=x+ei;     e1y=y+c-eo;   e2x=x+c-ei-1; e2y=y+c-eo;   }
+
+  const er = Math.max(1, c * 0.11);
+  const pr = Math.max(0.5, er * 0.5);
+
+  ctx.fillStyle = 'rgba(10,14,10,0.92)';
+  ctx.beginPath(); ctx.arc(e1x, e1y, er, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(e2x, e2y, er, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#070809';
+  ctx.beginPath(); ctx.arc(e1x, e1y, pr, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(e2x, e2y, pr, 0, Math.PI*2); ctx.fill();
+}
+
+// ══════════════════════════════════════════════════
+//  INPUT
+// ══════════════════════════════════════════════════
+function move(d) {
+  if (gameState !== 'playing') return;
+  const map = { up:{x:0,y:-1}, down:{x:0,y:1}, left:{x:-1,y:0}, right:{x:1,y:0} };
+  const n = map[d];
+  if (d === 'up'    && dir.y !==  1) nextDir = n;
+  if (d === 'down'  && dir.y !== -1) nextDir = n;
+  if (d === 'left'  && dir.x !==  1) nextDir = n;
+  if (d === 'right' && dir.x !== -1) nextDir = n;
+}
+
+const KEYS = {
+  ArrowUp:'up', ArrowDown:'down', ArrowLeft:'left', ArrowRight:'right',
+  w:'up', s:'down', a:'left', d:'right',
+  W:'up', S:'down', A:'left', D:'right'
+};
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { e.preventDefault(); openMenu(); return; }
+  if (KEYS[e.key]) {
+    e.preventDefault();
+    if (gameState === 'dead')   { initGame(); return; }
+    if (gameState === 'paused') { resumeGame(); return; }
+    move(KEYS[e.key]);
+  } else if (e.key === ' ' || e.key === 'Enter') {
+    e.preventDefault();
+    if (gameState === 'paused') { resumeGame(); return; }
+    if (gameState === 'dead')   { initGame(); }
+  }
+});
+
+let tx0 = 0, ty0 = 0;
+canvas.addEventListener('touchstart', e => {
+  tx0 = e.touches[0].clientX;
+  ty0 = e.touches[0].clientY;
+}, { passive: true });
+canvas.addEventListener('touchend', e => {
+  if (gameState !== 'playing') { if (gameState === 'dead') initGame(); return; }
+  const dx = e.changedTouches[0].clientX - tx0;
+  const dy = e.changedTouches[0].clientY - ty0;
+  if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+  Math.abs(dx) > Math.abs(dy) ? move(dx > 0 ? 'right' : 'left') : move(dy > 0 ? 'down' : 'up');
+}, { passive: true });
+
+function bindDpad(el, dirName) {
+  const on = e => {
+    e.preventDefault();
+    el.classList.add('hit');
+    if (gameState === 'dead')   { initGame(); return; }
+    if (gameState === 'paused') { resumeGame(); return; }
+    move(dirName);
+  };
+  const off = () => el.classList.remove('hit');
+  el.addEventListener('touchstart',  on,  { passive: false });
+  el.addEventListener('touchend',    off, { passive: true });
+  el.addEventListener('touchcancel', off, { passive: true });
+  el.addEventListener('mousedown',   on);
+  el.addEventListener('mouseup',     off);
+  el.addEventListener('mouseleave',  off);
+}
+bindDpad(document.getElementById('dp-up'),    'up');
+bindDpad(document.getElementById('dp-down'),  'down');
+bindDpad(document.getElementById('dp-left'),  'left');
+bindDpad(document.getElementById('dp-right'), 'right');
+
+function openMenu() {
+  if (gameState === 'dead') return;
+  if (gameState === 'playing') {
+    clearInterval(loopId);
+    gameState = 'paused';
+    showOverlay(ovMenu);
+  } else if (gameState === 'paused') {
+    resumeGame();
+  }
+}
+function resumeGame() {
+  if (gameState !== 'paused') return;
+  hideOverlay(ovMenu);
+  gameState = 'playing';
+  lockScroll();
+  loopId = setInterval(tick, calcSpeed(score));
+}
+
+menuBtn.addEventListener('click', e => { e.stopPropagation(); openMenu(); });
+document.getElementById('btn-play-again').addEventListener('click', e => { e.stopPropagation(); initGame(); });
+document.getElementById('btn-resume').addEventListener('click',     e => { e.stopPropagation(); resumeGame(); });
+document.getElementById('btn-restart').addEventListener('click',    e => { e.stopPropagation(); initGame(); });
+ovDead.addEventListener('click', e => { if (e.target === ovDead) initGame(); });
+
+// ══════════════════════════════════════════════════
+//  RESIZE — debounced, with extra delay on orientationchange
+//  to let Android's visual viewport settle after rotation.
+// ══════════════════════════════════════════════════
+let rzId = null;
+function onResize() {
+  clearTimeout(rzId);
+  rzId = setTimeout(() => { initGame(); }, 160);
+}
+window.addEventListener('resize', onResize);
+window.addEventListener('orientationchange', () => setTimeout(onResize, 150));
+
+// ══════════════════════════════════════════════════
+//  BOOT
+// ══════════════════════════════════════════════════
+// Small delay on first load so fonts/layout are rendered
+// before we measure element heights.
+setTimeout(initGame, 80);
+</script>
+</body>
+</html>
